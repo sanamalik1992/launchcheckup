@@ -15,15 +15,9 @@ export default function Home() {
   const [isPro, setIsPro] = useState(false);
   const [freeUsed, setFreeUsed] = useState(0);
 
-  function readUsed(): number {
-    const raw = localStorage.getItem("launchcheckup_free_generate_used");
-    const n = parseInt(raw ?? "0", 10);
-    return Number.isFinite(n) ? n : 0;
-  }
-
-  function writeUsed(n: number) {
-    localStorage.setItem("launchcheckup_free_generate_used", String(n));
-    setFreeUsed(n);
+  function readUsed() {
+    const used = Number(localStorage.getItem("launchcheckup_free_generate_used") ?? "0");
+    return Number.isFinite(used) ? used : 0;
   }
 
   useEffect(() => {
@@ -32,20 +26,20 @@ export default function Home() {
     setFreeUsed(readUsed());
   }, []);
 
+  function goToPricing() {
+    window.location.href = "/pricing";
+  }
+
   async function generate() {
     setError("");
     setResult(null);
 
     const usedNow = readUsed();
 
+    // If FREE limit reached, send them to pricing (clickable!)
     if (!isPro && usedNow >= FREE_GENERATE_LIMIT) {
-      setError(`Free limit reached (${FREE_GENERATE_LIMIT} generates). Upgrade to continue.`);
+      goToPricing();
       return;
-    }
-
-    // Reserve attempt immediately for FREE users
-    if (!isPro) {
-      writeUsed(usedNow + 1);
     }
 
     setLoading(true);
@@ -68,19 +62,21 @@ export default function Home() {
     setLoading(false);
 
     if (!res.ok) {
-      if (!isPro) {
-        // Roll back reserved attempt if failed
-        writeUsed(Math.max(0, readUsed() - 1));
-      }
       setError(data?.error ?? "Something went wrong");
       return;
     }
 
     setResult(data);
+
+    if (!isPro) {
+      const nextUsed = usedNow + 1;
+      localStorage.setItem("launchcheckup_free_generate_used", String(nextUsed));
+      setFreeUsed(nextUsed);
+    }
   }
 
-  const limitReached = !isPro && freeUsed >= FREE_GENERATE_LIMIT;
   const freeRemaining = Math.max(0, FREE_GENERATE_LIMIT - freeUsed);
+  const limitReached = !isPro && freeUsed >= FREE_GENERATE_LIMIT;
 
   return (
     <main style={{ fontFamily: "system-ui", maxWidth: 900, margin: "40px auto", padding: 16 }}>
@@ -101,41 +97,31 @@ export default function Home() {
         </div>
       )}
 
+      {limitReached && (
+        <div style={{ marginTop: 12, padding: 12, border: "1px solid #ffd7a8", borderRadius: 12 }}>
+          <b>Free limit reached.</b> Click the button below to upgrade and continue.
+        </div>
+      )}
+
       <p style={{ marginTop: 14 }}>Type your idea → get a Micro-Test Kit.</p>
 
-      <div style={{ display: "grid", gap: 10, marginTop: 16, maxWidth: 700 }}>
+      <div style={{ display: "grid", gap: 10, marginTop: 16 }}>
         <input placeholder="Idea" value={idea} onChange={(e) => setIdea(e.target.value)} />
         <input placeholder="Audience" value={audience} onChange={(e) => setAudience(e.target.value)} />
         <input placeholder="Price (optional)" value={price} onChange={(e) => setPrice(e.target.value)} />
 
-        {!limitReached ? (
-          <button
-            onClick={generate}
-            disabled={loading || !idea || !audience}
-            style={{
-              padding: "10px 12px",
-              borderRadius: 10,
-              border: "1px solid #ddd",
-              cursor: "pointer",
-            }}
-          >
-            {loading ? "Generating..." : "Generate"}
-          </button>
-        ) : (
-          <a
-            href="/pricing"
-            style={{
-              display: "inline-block",
-              textAlign: "center",
-              padding: "10px 12px",
-              borderRadius: 10,
-              border: "1px solid #ddd",
-              textDecoration: "none",
-            }}
-          >
-            Upgrade to continue
-          </a>
-        )}
+        <button
+          onClick={limitReached ? goToPricing : generate}
+          disabled={loading || (!limitReached && (!idea || !audience))}
+          style={{
+            padding: "10px 12px",
+            borderRadius: 10,
+            border: "1px solid #ddd",
+            cursor: "pointer",
+          }}
+        >
+          {loading ? "Generating..." : limitReached ? "Upgrade to continue" : "Generate"}
+        </button>
       </div>
 
       {error && <p style={{ color: "crimson", marginTop: 16 }}>{error}</p>}
