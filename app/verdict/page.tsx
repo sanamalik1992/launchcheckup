@@ -15,9 +15,15 @@ export default function Home() {
   const [isPro, setIsPro] = useState(false);
   const [freeUsed, setFreeUsed] = useState(0);
 
-  function readUsed() {
-    const used = Number(localStorage.getItem("launchcheckup_free_generate_used") ?? "0");
-    return Number.isFinite(used) ? used : 0;
+  function readUsed(): number {
+    const raw = localStorage.getItem("launchcheckup_free_generate_used");
+    const n = parseInt(raw ?? "0", 10);
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  function writeUsed(n: number) {
+    localStorage.setItem("launchcheckup_free_generate_used", String(n));
+    setFreeUsed(n);
   }
 
   useEffect(() => {
@@ -39,11 +45,15 @@ export default function Home() {
 
     const usedNow = readUsed();
 
+    // BLOCK if already at limit
     if (!isPro && usedNow >= FREE_GENERATE_LIMIT) {
-      setError(
-        `Free limit reached (${FREE_GENERATE_LIMIT} generates). Upgrade to Pro for unlimited generates.`
-      );
+      setError(`Free limit reached (${FREE_GENERATE_LIMIT} generates). Upgrade to continue.`);
       return;
+    }
+
+    // IMPORTANT: Reserve this attempt immediately (prevents 4th click ever going through)
+    if (!isPro) {
+      writeUsed(usedNow + 1);
     }
 
     setLoading(true);
@@ -66,17 +76,15 @@ export default function Home() {
     setLoading(false);
 
     if (!res.ok) {
+      // Roll back the reserved attempt if the request failed
+      if (!isPro) {
+        writeUsed(Math.max(0, readUsed() - 1));
+      }
       setError(data?.error ?? "Something went wrong");
       return;
     }
 
     setResult(data);
-
-    if (!isPro) {
-      const nextUsed = usedNow + 1;
-      localStorage.setItem("launchcheckup_free_generate_used", String(nextUsed));
-      setFreeUsed(nextUsed);
-    }
   }
 
   const freeRemaining = Math.max(0, FREE_GENERATE_LIMIT - freeUsed);
@@ -92,9 +100,7 @@ export default function Home() {
 
       {!isPro && (
         <div style={{ marginTop: 12, padding: 12, border: "1px solid #eee", borderRadius: 12 }}>
-          <b>Free plan:</b> {freeRemaining} generate{freeRemaining === 1 ? "" : "s"} left (out of{" "}
-          {FREE_GENERATE_LIMIT})
-          <span style={{ color: "#666" }}> — used: {freeUsed}</span>
+          <b>Free plan:</b> {freeRemaining} generate{freeRemaining === 1 ? "" : "s"} left (used: {freeUsed}/{FREE_GENERATE_LIMIT})
           {" · "}
           <a href="/pricing">Upgrade →</a>
           {" · "}
@@ -116,7 +122,7 @@ export default function Home() {
 
       <p style={{ marginTop: 14 }}>Type your idea → get a Micro-Test Kit.</p>
 
-      <div style={{ display: "grid", gap: 10, marginTop: 16 }}>
+      <div style={{ display: "grid", gap: 10, marginTop: 16, maxWidth: 700 }}>
         <input placeholder="Idea" value={idea} onChange={(e) => setIdea(e.target.value)} />
         <input placeholder="Audience" value={audience} onChange={(e) => setAudience(e.target.value)} />
         <input placeholder="Price (optional)" value={price} onChange={(e) => setPrice(e.target.value)} />
